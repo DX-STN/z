@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stable Crop Tool</title>
+
+<style>
+body {
+ margin:0;
+ background:#111;
+ overflow:hidden;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+}
+
+.canvas {
+ width:90vw;
+ margin:10px 0;
+ background:#222;
+ position:relative;
+ overflow:hidden;
+ touch-action:none;
+}
+
+#nav-container { height:30vh; }
+#main-container { height:50vh; background:#333; }
+
+#main-img,#nav-img {
+ position:absolute;
+ top:0;
+ left:0;
+ transform-origin:0 0;
+ pointer-events:none;
+ display:none;
+ image-rendering:pixelated;
+}
+
+.crop-box {
+ position:absolute;
+ border:2px solid #4da3ff;
+ box-sizing:border-box;
+ pointer-events:none;
+ display:none;
+}
+
+.nav-box {
+ position:absolute;
+ border:1px solid red;
+ background:rgba(255,0,0,0.2);
+ pointer-events:none;
+ display:none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="nav-container" class="canvas">
+ <img id="nav-img">
+ <div id="nav-box" class="nav-box"></div>
+</div>
+
+<div id="main-container" class="canvas">
+ <img id="main-img">
+ <div id="crop-box" class="crop-box"></div>
+</div>
+
+<input type="file" id="file-input" accept="image/*">
+
+<script>
+const navImg = document.getElementById('nav-img');
+const mainImg = document.getElementById('main-img');
+const navBox = document.getElementById('nav-box');
+const cropBox = document.getElementById('crop-box');
+const mCont = document.getElementById('main-container');
+const nCont = document.getElementById('nav-container');
+const fileInput = document.getElementById('file-input');
+
+let img = { w:0, h:0, isLoaded:false };
+let view = { x:0, y:0, scale:1 };
+let sel  = { x:0, y:0, w:0, h:0 };
+
+fileInput.onchange = e => {
+ const file = e.target.files[0];
+ if (!file) return;
+
+ const reader = new FileReader();
+
+ reader.onload = ev => {
+  navImg.src = mainImg.src = ev.target.result;
+
+  mainImg.onload = () => {
+
+   img.w = mainImg.naturalWidth;
+   img.h = mainImg.naturalHeight;
+   img.isLoaded = true;
+
+   const r = mCont.getBoundingClientRect();
+
+   // 初期表示（画像フィット）
+   view.scale = Math.min(r.width / img.w, r.height / img.h);
+   view.x = (r.width - img.w * view.scale) / 2;
+   view.y = (r.height - img.h * view.scale) / 2;
+
+   sel = { x:0, y:0, w:img.w, h:img.h };
+
+   mainImg.style.display =
+   navImg.style.display =
+   cropBox.style.display =
+   navBox.style.display = 'block';
+
+   update();
+  };
+ };
+
+ reader.readAsDataURL(file);
+};
+
+let touch = { mode:'', lastX:0, lastY:0, lastDist:0, lastScale:1 };
+
+mCont.addEventListener('touchstart', e => {
+ if (!img.isLoaded) return;
+
+ const t = e.touches;
+
+ if (t.length === 2) {
+  touch.mode = 'zoom';
+  touch.lastDist = Math.hypot(
+   t[1].pageX - t[0].pageX,
+   t[1].pageY - t[0].pageY
+  );
+  touch.lastScale = view.scale;
+ } else {
+  touch.mode = 'move';
+  touch.lastX = t[0].pageX;
+  touch.lastY = t[0].pageY;
+ }
+},{passive:false});
+
+mCont.addEventListener('touchmove', e => {
+ if (!touch.mode) return;
+ e.preventDefault();
+
+ const t = e.touches;
+
+ if (touch.mode === 'zoom' && t.length === 2) {
+
+  const dist = Math.hypot(
+   t[1].pageX - t[0].pageX,
+   t[1].pageY - t[0].pageY
+  );
+
+  const scale = touch.lastScale * (dist / touch.lastDist);
+
+  const r = mCont.getBoundingClientRect();
+  const cx = r.width / 2;
+  const cy = r.height / 2;
+
+  view.x = cx - (cx - view.x) * (scale / view.scale);
+  view.y = cy - (cy - view.y) * (scale / view.scale);
+  view.scale = scale;
+ }
+
+ if (touch.mode === 'move' && t.length === 1) {
+  view.x += t[0].pageX - touch.lastX;
+  view.y += t[0].pageY - touch.lastY;
+
+  touch.lastX = t[0].pageX;
+  touch.lastY = t[0].pageY;
+ }
+
+ update();
+},{passive:false});
+
+mCont.addEventListener('touchend', () => {
+ touch.mode = '';
+});
+
+function update() {
+ if (!img.isLoaded) return;
+
+ // ===== MAIN =====
+ mainImg.style.transform =
+  `translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+
+ const L = view.x + sel.x * view.scale;
+ const T = view.y + sel.y * view.scale;
+ const W = sel.w * view.scale;
+ const H = sel.h * view.scale;
+
+ cropBox.style.left = L + 'px';
+ cropBox.style.top = T + 'px';
+ cropBox.style.width = W + 'px';
+ cropBox.style.height = H + 'px';
+
+ // ===== NAV（完全統一ルール） =====
+ const nr = nCont.getBoundingClientRect();
+
+ const navScale = Math.min(nr.width / img.w, nr.height / img.h);
+
+ const nx = (nr.width - img.w * navScale) / 2;
+ const ny = (nr.height - img.h * navScale) / 2;
+
+ navImg.style.transform =
+  `translate(${nx}px,${ny}px) scale(${navScale})`;
+
+ navBox.style.left = (nx + sel.x * navScale) + 'px';
+ navBox.style.top = (ny + sel.y * navScale) + 'px';
+ navBox.style.width = (sel.w * navScale) + 'px';
+ navBox.style.height = (sel.h * navScale) + 'px';
+}
+</script>
+
+</body>
+</html>
