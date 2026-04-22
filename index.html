@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stable Crop + Nav Fix</title>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+.canvas{
+    width:90vw;
+    margin:10px 0;
+    position:relative;
+    overflow:hidden;
+    background:#222;
+    touch-action:none;
+}
+
+#main-container{height:55vh;background:#333;}
+#nav-container{height:30vh;}
+
+#main-img,#nav-img{
+    position:absolute;
+    top:0;left:0;
+    transform-origin:0 0;
+    display:none;
+    pointer-events:none;
+}
+
+.crop-box{
+    position:absolute;
+    border:2px solid #4da3ff;
+    box-sizing:border-box;
+    display:none;
+}
+
+.handle{
+    position:absolute;
+    background:rgba(0,100,255,0.15);
+}
+
+.h-n,.h-s{height:60px;transform:translateY(-30px);}
+.h-e,.h-w{width:60px;transform:translateX(-30px);}
+</style>
+</head>
+
+<body>
+
+<div id="nav-container" class="canvas">
+    <img id="nav-img">
+    <div id="nav-box" class="crop-box"></div>
+</div>
+
+<div id="main-container" class="canvas">
+    <img id="main-img">
+    <div id="crop-box" class="crop-box"></div>
+
+    <div id="hn" class="handle h-n" data-edge="n"></div>
+    <div id="hs" class="handle h-s" data-edge="s"></div>
+    <div id="he" class="handle h-e" data-edge="e"></div>
+    <div id="hw" class="handle h-w" data-edge="w"></div>
+</div>
+
+<input type="file" id="file-input">
+
+<script>
+
+const mainImg=document.getElementById('main-img');
+const navImg=document.getElementById('nav-img');
+const cropBox=document.getElementById('crop-box');
+const navBox=document.getElementById('nav-box');
+
+const mCont=document.getElementById('main-container');
+const nCont=document.getElementById('nav-container');
+
+const h={
+n:document.getElementById('hn'),
+s:document.getElementById('hs'),
+e:document.getElementById('he'),
+w:document.getElementById('hw')
+};
+
+let img={w:0,h:0,ok:false};
+let view={x:0,y:0,scale:1};
+let sel={x:0,y:0,w:0,h:0};
+
+let touch={
+mode:'',
+edge:'',
+lastX:0,
+lastY:0,
+startDist:0,
+startScale:1
+};
+
+/* =====================
+   LOAD
+===================== */
+document.getElementById('file-input').onchange=(e)=>{
+const file=e.target.files[0];
+if(!file)return;
+
+const r=new FileReader();
+r.onload=(ev)=>{
+mainImg.src=navImg.src=ev.target.result;
+
+mainImg.onload=()=>{
+img.w=mainImg.naturalWidth;
+img.h=mainImg.naturalHeight;
+img.ok=true;
+
+const rect=mCont.getBoundingClientRect();
+
+view.scale=Math.min(rect.width/img.w,rect.height/img.h);
+view.x=(rect.width-img.w*view.scale)/2;
+view.y=(rect.height-img.h*view.scale)/2;
+
+/* 初期は全選択 */
+sel={x:0,y:0,w:img.w,h:img.h};
+
+mainImg.style.display=navImg.style.display=cropBox.style.display=navBox.style.display='block';
+
+update();
+};
+};
+r.readAsDataURL(file);
+};
+
+/* =====================
+   TOUCH START
+===================== */
+mCont.addEventListener('touchstart',(e)=>{
+if(!img.ok)return;
+
+const t=e.touches;
+
+if(e.target.classList.contains('handle')){
+touch.mode='edit';
+touch.edge=e.target.dataset.edge;
+touch.lastX=t[0].pageX;
+touch.lastY=t[0].pageY;
+return;
+}
+
+if(t.length===2){
+const cx=(t[0].pageX+t[1].pageX)/2;
+const cy=(t[0].pageY+t[1].pageY)/2;
+
+touch.mode=
+(cx>=sel.x && cx<=sel.x+sel.w &&
+ cy>=sel.y && cy<=sel.y+sel.h)
+?'inner':'outer';
+
+touch.startDist=Math.hypot(
+t[1].pageX-t[0].pageX,
+t[1].pageY-t[0].pageY
+);
+
+touch.startScale=view.scale;
+return;
+}
+
+touch.mode='scroll';
+touch.lastX=t[0].pageX;
+touch.lastY=t[0].pageY;
+},{passive:false});
+
+/* =====================
+   MOVE
+===================== */
+mCont.addEventListener('touchmove',(e)=>{
+if(!touch.mode)return;
+e.preventDefault();
+
+const t=e.touches;
+
+/* =================
+   INNER ZOOM（虫眼鏡）
+================= */
+if(touch.mode==='inner' && t.length===2){
+const dist=Math.hypot(
+t[1].pageX-t[0].pageX,
+t[1].pageY-t[0].pageY
+);
+
+const scale=touch.startScale*(dist/touch.startDist);
+view.scale=Math.max(0.1,Math.min(scale,10));
+
+const cx=sel.x+sel.w/2;
+const cy=sel.y+sel.h/2;
+
+view.x=mCont.clientWidth/2-cx*view.scale;
+view.y=mCont.clientHeight/2-cy*view.scale;
+}
+
+/* =================
+   OUTER ZOOM（カメラ）
+================= */
+else if(touch.mode==='outer' && t.length===2){
+const dist=Math.hypot(
+t[1].pageX-t[0].pageX,
+t[1].pageY-t[0].pageY
+);
+
+const newScale=touch.startScale*(dist/touch.startDist);
+
+const ratio=newScale/view.scale;
+
+const cx=mCont.clientWidth/2;
+const cy=mCont.clientHeight/2;
+
+view.x=cx-(cx-view.x)*ratio;
+view.y=cy-(cy-view.y)*ratio;
+
+view.scale=newScale;
+}
+
+/* =================
+   SCROLL
+================= */
+else if(touch.mode==='scroll'){
+view.x+=t[0].pageX-touch.lastX;
+view.y+=t[0].pageY-touch.lastY;
+
+touch.lastX=t[0].pageX;
+touch.lastY=t[0].pageY;
+}
+
+/* =================
+   EDIT
+================= */
+else if(touch.mode==='edit'){
+const dx=(t[0].pageX-touch.lastX)/view.scale;
+const dy=(t[0].pageY-touch.lastY)/view.scale;
+
+const min=1;
+
+if(touch.edge==='n'){sel.y+=dy;sel.h-=dy;}
+if(touch.edge==='s'){sel.h=Math.max(min,sel.h+dy);}
+if(touch.edge==='e'){sel.w=Math.max(min,sel.w+dx);}
+if(touch.edge==='w'){sel.x+=dx;sel.w-=dx;}
+
+touch.lastX=t[0].pageX;
+touch.lastY=t[0].pageY;
+}
+
+update();
+},{passive:false});
+
+/* =====================
+   UPDATE（重要修正）
+===================== */
+function update(){
+if(!img.ok)return;
+
+/* MAIN */
+mainImg.style.transform=
+`translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+
+const x=sel.x*view.scale+view.x;
+const y=sel.y*view.scale+view.y;
+const w=sel.w*view.scale;
+const h=sel.h*view.scale;
+
+cropBox.style.left=x+'px';
+cropBox.style.top=y+'px';
+cropBox.style.width=w+'px';
+cropBox.style.height=h+'px';
+
+/* HANDLES */
+h.n.style.left=x+'px';
+h.n.style.top=y+'px';
+h.n.style.width=w+'px';
+
+h.s.style.left=x+'px';
+h.s.style.top=(y+h)+'px';
+h.s.style.width=w+'px';
+
+h.w.style.left=x+'px';
+h.w.style.top=y+'px';
+h.w.style.height=h+'px';
+
+h.e.style.left=(x+w)+'px';
+h.e.style.top=y+'px';
+h.e.style.height=h+'px';
+
+/* =====================
+   NAV（完全修正ポイント）
+   ★ view禁止（ここが修正核心）
+===================== */
+const nRect=nCont.getBoundingClientRect();
+const nScale=Math.min(nRect.width/img.w,nRect.height/img.h);
+
+const nx=(nRect.width-img.w*nScale)/2;
+const ny=(nRect.height-img.h*nScale)/2;
+
+navImg.style.transform=
+`translate(${nx}px,${ny}px) scale(${nScale})`;
+
+/* selだけで描画 */
+navBox.style.left=nx+sel.x*nScale+'px';
+navBox.style.top=ny+sel.y*nScale+'px';
+navBox.style.width=sel.w*nScale+'px';
+navBox.style.height=sel.h*nScale+'px';
+}
+
+</script>
+
+</body>
+</html>
