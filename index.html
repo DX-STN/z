@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>FINAL STABLE FIX</title>
+
+<style>
+body{
+ margin:0;
+ background:#111;
+ overflow:hidden;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+}
+
+.canvas{
+ width:90vw;
+ margin:10px 0;
+ background:#222;
+ position:relative;
+ overflow:hidden;
+ touch-action:none;
+}
+
+#nav-container{height:30vh;}
+#main-container{height:50vh;background:#333;}
+
+#main-img,#nav-img{
+ position:absolute;
+ top:0;left:0;
+ transform-origin:0 0;
+ pointer-events:none;
+ display:none;
+ image-rendering:pixelated;
+}
+
+.crop-box{
+ position:absolute;
+ border:2px solid #4da3ff;
+ box-sizing:border-box;
+ pointer-events:none;
+ display:none;
+}
+
+.nav-box{
+ position:absolute;
+ border:1px solid red;
+ background:rgba(255,0,0,0.2);
+ pointer-events:none;
+ display:none;
+}
+
+.handle{position:absolute;background:rgba(0,100,255,0.08);}
+.h-n,.h-s{height:60px;}
+.h-e,.h-w{width:60px;}
+</style>
+</head>
+
+<body>
+
+<div id="nav-container" class="canvas">
+ <img id="nav-img">
+ <div id="nav-box" class="nav-box"></div>
+</div>
+
+<div id="main-container" class="canvas">
+ <img id="main-img">
+ <div id="crop-box" class="crop-box"></div>
+
+ <div id="hn" class="handle h-n"></div>
+ <div id="hs" class="handle h-s"></div>
+ <div id="he" class="handle h-e"></div>
+ <div id="hw" class="handle h-w"></div>
+</div>
+
+<input type="file" id="file-input" accept="image/*">
+
+<script>
+const navImg = document.getElementById('nav-img');
+const mainImg = document.getElementById('main-img');
+const navBox = document.getElementById('nav-box');
+const cropBox = document.getElementById('crop-box');
+const mCont = document.getElementById('main-container');
+const nCont = document.getElementById('nav-container');
+const fileInput = document.getElementById('file-input');
+
+const hn = document.getElementById('hn');
+const hs = document.getElementById('hs');
+const he = document.getElementById('he');
+const hw = document.getElementById('hw');
+
+let img={w:0,h:0,isLoaded:false};
+let view={x:0,y:0,scale:1};
+let sel={x:0,y:0,w:0,h:0};
+
+let touch={mode:'',edge:'',lastX:0,lastY:0,lastDist:0,lastScale:1};
+
+// ===== LOAD =====
+fileInput.onchange=e=>{
+ const f=e.target.files[0];
+ if(!f)return;
+
+ const r=new FileReader();
+ r.onload=ev=>{
+  navImg.src=mainImg.src=ev.target.result;
+
+  mainImg.onload=()=>{
+   img.w=mainImg.naturalWidth;
+   img.h=mainImg.naturalHeight;
+   img.isLoaded=true;
+
+   const rect=mCont.getBoundingClientRect();
+
+   // 初期：短辺フィット
+   view.scale=Math.max(rect.width/img.w,rect.height/img.h);
+   view.x=(rect.width-img.w*view.scale)/2;
+   view.y=(rect.height-img.h*view.scale)/2;
+
+   sel={x:0,y:0,w:img.w,h:img.h};
+
+   mainImg.style.display=
+   navImg.style.display=
+   cropBox.style.display=
+   navBox.style.display='block';
+
+   update();
+  };
+ };
+ r.readAsDataURL(f);
+};
+
+// ===== TOUCH START =====
+mCont.addEventListener('touchstart',e=>{
+ if(!img.isLoaded)return;
+ const t=e.touches;
+
+ if(t.length===2){
+  touch.mode='zoom';
+  touch.lastDist=Math.hypot(
+   t[1].pageX-t[0].pageX,
+   t[1].pageY-t[0].pageY
+  );
+  touch.lastScale=view.scale;
+ }else{
+  if(e.target.classList.contains('handle')){
+   touch.mode='edit';
+   touch.edge=e.target.id;
+  }else{
+   touch.mode='move';
+  }
+  touch.lastX=t[0].pageX;
+  touch.lastY=t[0].pageY;
+ }
+},{passive:false});
+
+// ===== TOUCH MOVE =====
+mCont.addEventListener('touchmove',e=>{
+ if(!touch.mode)return;
+ e.preventDefault();
+ const t=e.touches;
+
+ if(touch.mode==='zoom' && t.length===2){
+  const dist=Math.hypot(
+   t[1].pageX-t[0].pageX,
+   t[1].pageY-t[0].pageY
+  );
+
+  const scale=touch.lastScale*(dist/touch.lastDist);
+
+  const r=mCont.getBoundingClientRect();
+  const cx=r.width/2,cy=r.height/2;
+
+  view.x=cx-(cx-view.x)*(scale/view.scale);
+  view.y=cy-(cy-view.y)*(scale/view.scale);
+  view.scale=scale;
+ }
+
+ if(touch.mode==='move'){
+  view.x+=t[0].pageX-touch.lastX;
+  view.y+=t[0].pageY-touch.lastY;
+  touch.lastX=t[0].pageX;
+  touch.lastY=t[0].pageY;
+ }
+
+ if(touch.mode==='edit'){
+  let dx=(t[0].pageX-touch.lastX)/view.scale;
+  let dy=(t[0].pageY-touch.lastY)/view.scale;
+
+  const min=1;
+
+  if(touch.edge==='hn'){ dy=Math.min(dy,sel.h-min); sel.y+=dy; sel.h-=dy; }
+  if(touch.edge==='hs'){ sel.h=Math.max(min,sel.h+dy); }
+  if(touch.edge==='he'){ sel.w=Math.max(min,sel.w+dx); }
+  if(touch.edge==='hw'){ dx=Math.min(dx,sel.w-min); sel.x+=dx; sel.w-=dx; }
+
+  // ★完全clamp（絶対画像外に出さない）
+  sel.x=Math.max(0,Math.min(sel.x,img.w-sel.w));
+  sel.y=Math.max(0,Math.min(sel.y,img.h-sel.h));
+  sel.w=Math.min(sel.w,img.w-sel.x);
+  sel.h=Math.min(sel.h,img.h-sel.y);
+
+  touch.lastX=t[0].pageX;
+  touch.lastY=t[0].pageY;
+
+  fitToSel();
+ }
+
+ update();
+},{passive:false});
+
+// ===== TOUCH END =====
+mCont.addEventListener('touchend',()=>{
+ if(touch.mode==='edit'){
+  sel.x=Math.round(sel.x);
+  sel.y=Math.round(sel.y);
+  sel.w=Math.round(sel.w);
+  sel.h=Math.round(sel.h);
+ }
+ touch.mode='';
+});
+
+// ===== FIT =====
+function fitToSel(){
+ const r=mCont.getBoundingClientRect();
+
+ const targetScale=Math.min(r.width/sel.w,r.height/sel.h);
+
+ // ★ゆっくり追従
+ view.scale += (targetScale - view.scale)*0.15;
+
+ // ★必ず中央
+ view.x=(r.width/2)-(sel.x+sel.w/2)*view.scale;
+ view.y=(r.height/2)-(sel.y+sel.h/2)*view.scale;
+}
+
+// ===== UPDATE =====
+function update(){
+ if(!img.isLoaded)return;
+
+ mainImg.style.transform=
+  `translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+
+ const L=view.x+sel.x*view.scale;
+ const T=view.y+sel.y*view.scale;
+ const W=sel.w*view.scale;
+ const H=sel.h*view.scale;
+
+ cropBox.style.left=L+'px';
+ cropBox.style.top=T+'px';
+ cropBox.style.width=W+'px';
+ cropBox.style.height=H+'px';
+
+ // handle
+ const pad=30;
+ hn.style.left=(L+5)+'px';
+ hn.style.top=(T-pad)+'px';
+ hn.style.width=(W-10)+'px';
+
+ hs.style.left=(L+5)+'px';
+ hs.style.top=(T+H-pad)+'px';
+ hs.style.width=(W-10)+'px';
+
+ hw.style.left=(L-pad)+'px';
+ hw.style.top=(T+5)+'px';
+ hw.style.height=(H-10)+'px';
+
+ he.style.left=(L+W-pad)+'px';
+ he.style.top=(T+5)+'px';
+ he.style.height=(H-10)+'px';
+
+ // ===== NAV =====
+ const nr=nCont.getBoundingClientRect();
+ const base=Math.min(nr.width/img.w,nr.height/img.h);
+
+ let zoom=1;
+ if(sel.w<60 || sel.h<60){
+  zoom=Math.min(5,60/Math.min(sel.w,sel.h));
+ }
+
+ const ns=base*zoom;
+
+ const nx=(nr.width-img.w*ns)/2;
+ const ny=(nr.height-img.h*ns)/2;
+
+ navImg.style.transform=
+  `translate(${nx}px,${ny}px) scale(${ns})`;
+
+ navBox.style.left=(nx+sel.x*ns)+'px';
+ navBox.style.top=(ny+sel.y*ns)+'px';
+ navBox.style.width=(sel.w*ns)+'px';
+ navBox.style.height=(sel.h*ns)+'px';
+}
+</script>
+
+</body>
+</html>
