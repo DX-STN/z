@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stable Core Nav Test</title>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+.canvas{
+    width:90vw;
+    margin:10px 0;
+    position:relative;
+    overflow:hidden;
+    background:#222;
+    touch-action:none;
+}
+
+#main-container{height:55vh;background:#333;}
+#nav-container{height:30vh;}
+
+#main-img,#nav-img{
+    position:absolute;
+    top:0;left:0;
+    transform-origin:0 0;
+    display:none;
+    pointer-events:none;
+}
+
+/* 枠 */
+.box{
+    position:absolute;
+    border:2px solid;
+    box-sizing:border-box;
+    display:none;
+}
+
+#sel-box{border-color:#4da3ff;}
+#view-box{border-color:rgba(255,0,0,0.8);}
+</style>
+</head>
+
+<body>
+
+<div id="nav-container" class="canvas">
+    <img id="nav-img">
+    <div id="sel-box" class="box"></div>
+    <div id="view-box" class="box"></div>
+</div>
+
+<div id="main-container" class="canvas">
+    <img id="main-img">
+</div>
+
+<input type="file" id="file-input">
+
+<script>
+
+const mainImg=document.getElementById('main-img');
+const navImg=document.getElementById('nav-img');
+
+const selBox=document.getElementById('sel-box');
+const viewBox=document.getElementById('view-box');
+
+const mCont=document.getElementById('main-container');
+const nCont=document.getElementById('nav-container');
+
+let img={w:0,h:0,ok:false};
+
+let view={x:0,y:0,scale:1};
+let sel={x:0,y:0,w:0,h:0};
+
+/* =====================
+   LOAD
+===================== */
+document.getElementById('file-input').onchange=(e)=>{
+const file=e.target.files[0];
+if(!file)return;
+
+const r=new FileReader();
+r.onload=(ev)=>{
+mainImg.src=navImg.src=ev.target.result;
+
+mainImg.onload=()=>{
+img.w=mainImg.naturalWidth;
+img.h=mainImg.naturalHeight;
+img.ok=true;
+
+const rect=mCont.getBoundingClientRect();
+
+/* 初期：全体フィット */
+view.scale=Math.min(rect.width/img.w,rect.height/img.h);
+view.x=(rect.width-img.w*view.scale)/2;
+view.y=(rect.height-img.h*view.scale)/2;
+
+/* 初期sel = 全体 */
+sel={x:0,y:0,w:img.w,h:img.h};
+
+mainImg.style.display=navImg.style.display=
+selBox.style.display=viewBox.style.display='block';
+
+update();
+};
+};
+r.readAsDataURL(file);
+};
+
+/* =====================
+   MOVE（最低限）
+===================== */
+mCont.addEventListener('touchmove',(e)=>{
+if(!img.ok)return;
+e.preventDefault();
+
+const t=e.touches;
+
+/* スクロール */
+if(t.length===1){
+view.x+=t[0].movementX||0;
+view.y+=t[0].movementY||0;
+}
+
+update();
+},{passive:false});
+
+/* =====================
+   UPDATE CORE
+===================== */
+function update(){
+if(!img.ok)return;
+
+/* MAIN */
+mainImg.style.transform=
+`translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+
+/* =====================
+   SEL（青枠）
+===================== */
+const sx=view.x+sel.x*view.scale;
+const sy=view.y+sel.y*view.scale;
+
+selBox.style.left=sx+'px';
+selBox.style.top=sy+'px';
+selBox.style.width=sel.w*view.scale+'px';
+selBox.style.height=sel.h*view.scale+'px';
+
+/* =====================
+   VIEW（赤枠＝視界）
+===================== */
+const rect=mCont.getBoundingClientRect();
+
+const vw=rect.width;
+const vh=rect.height;
+
+/* view逆算（画面→画像） */
+const vx=view.x;
+const vy=view.y;
+
+viewBox.style.left=vx+'px';
+viewBox.style.top=vy+'px';
+viewBox.style.width=vw+'px';
+viewBox.style.height=vh+'px';
+
+/* =====================
+   NAV IMAGE（固定縮小）
+===================== */
+const nRect=nCont.getBoundingClientRect();
+
+const scale=Math.min(nRect.width/img.w,nRect.height/img.h);
+
+const ox=(nRect.width-img.w*scale)/2;
+const oy=(nRect.height-img.h*scale)/2;
+
+navImg.style.display='block';
+navImg.style.transform=
+`translate(${ox}px,${oy}px) scale(${scale})`;
+
+/* SEL（ナビ上） */
+selBox.style.left=ox+sel.x*scale+'px';
+selBox.style.top=oy+sel.y*scale+'px';
+selBox.style.width=sel.w*scale+'px';
+selBox.style.height=sel.h*scale+'px';
+
+/* VIEW（ナビ上） */
+viewBox.style.left=ox + (-view.x / view.scale)*scale + 'px';
+viewBox.style.top=oy + (-view.y / view.scale)*scale + 'px';
+viewBox.style.width=(rect.width/view.scale)*scale+'px';
+viewBox.style.height=(rect.height/view.scale)*scale+'px';
+}
+
+</script>
+
+</body>
+</html>
