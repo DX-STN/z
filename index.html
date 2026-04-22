@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Stable Nav Clean Version</title>
+
+<style>
+body{
+  margin:0;
+  background:#111;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+.canvas{
+  width:90vw;
+  margin:10px 0;
+  position:relative;
+  overflow:hidden;
+  background:#222;
+  touch-action:none;
+}
+
+#main-container{height:55vh;background:#333;}
+#nav-container{height:30vh;}
+
+img{
+  position:absolute;
+  top:0;left:0;
+  transform-origin:0 0;
+  display:none;
+  pointer-events:none;
+}
+
+/* メイン青枠 */
+#crop-box{
+  position:absolute;
+  border:2px solid #4da3ff;
+  box-sizing:border-box;
+  display:none;
+}
+
+/* ナビ青枠（sel） */
+#nav-sel{
+  position:absolute;
+  border:2px solid #4da3ff;
+  box-sizing:border-box;
+}
+
+/* ナビ赤枠（view） */
+#nav-view{
+  position:absolute;
+  border:2px solid rgba(255,0,0,0.8);
+  box-sizing:border-box;
+}
+</style>
+</head>
+
+<body>
+
+<div id="nav-container" class="canvas">
+  <img id="nav-img">
+  <div id="nav-sel"></div>
+  <div id="nav-view"></div>
+</div>
+
+<div id="main-container" class="canvas">
+  <img id="main-img">
+  <div id="crop-box"></div>
+</div>
+
+<input type="file" id="file-input">
+
+<script>
+
+const mainImg=document.getElementById('main-img');
+const navImg=document.getElementById('nav-img');
+
+const cropBox=document.getElementById('crop-box');
+const navSel=document.getElementById('nav-sel');
+const navView=document.getElementById('nav-view');
+
+const mCont=document.getElementById('main-container');
+const nCont=document.getElementById('nav-container');
+
+let img={w:0,h:0,ok:false};
+let view={x:0,y:0,scale:1};
+let sel={x:0,y:0,w:0,h:0};
+
+/* =========================
+   LOAD
+========================= */
+document.getElementById('file-input').onchange=(e)=>{
+const file=e.target.files[0];
+if(!file)return;
+
+const r=new FileReader();
+r.onload=(ev)=>{
+mainImg.src=navImg.src=ev.target.result;
+
+mainImg.onload=()=>{
+img.w=mainImg.naturalWidth;
+img.h=mainImg.naturalHeight;
+img.ok=true;
+
+const rect=mCont.getBoundingClientRect();
+
+/* 初期fit */
+view.scale=Math.min(rect.width/img.w,rect.height/img.h);
+view.x=(rect.width-img.w*view.scale)/2;
+view.y=(rect.height-img.h*view.scale)/2;
+
+/* 初期選択＝全体 */
+sel={x:0,y:0,w:img.w,h:img.h};
+
+mainImg.style.display=
+navImg.style.display=
+cropBox.style.display=
+navSel.style.display=
+navView.style.display='block';
+
+update();
+};
+};
+r.readAsDataURL(file);
+};
+
+/* =========================
+   DRAG（最低限）
+========================= */
+let lx=0,ly=0;
+
+mCont.addEventListener('touchstart',(e)=>{
+lx=e.touches[0].pageX;
+ly=e.touches[0].pageY;
+},{passive:false});
+
+mCont.addEventListener('touchmove',(e)=>{
+if(!img.ok)return;
+e.preventDefault();
+
+const t=e.touches;
+if(t.length===1){
+view.x+=t[0].pageX-lx;
+view.y+=t[0].pageY-ly;
+
+lx=t[0].pageX;
+ly=t[0].pageY;
+}
+
+update();
+},{passive:false});
+
+/* =========================
+   UPDATE CORE（ここが本体）
+========================= */
+function update(){
+if(!img.ok)return;
+
+/* MAIN IMAGE */
+mainImg.style.transform=
+`translate(${view.x}px,${view.y}px) scale(${view.scale})`;
+
+/* =========================
+   MAIN SEL（青枠）
+========================= */
+cropBox.style.left = view.x + sel.x * view.scale + 'px';
+cropBox.style.top  = view.y + sel.y * view.scale + 'px';
+cropBox.style.width  = sel.w * view.scale + 'px';
+cropBox.style.height = sel.h * view.scale + 'px';
+
+/* =========================
+   NAV IMAGE（固定fit）
+========================= */
+const r=nCont.getBoundingClientRect();
+const nScale=Math.min(r.width/img.w,r.height/img.h);
+
+const ox=(r.width-img.w*nScale)/2;
+const oy=(r.height-img.h*nScale)/2;
+
+navImg.style.transform=
+`translate(${ox}px,${oy}px) scale(${nScale})`;
+
+/* =========================
+   NAV SEL（完全画像基準）
+========================= */
+navSel.style.left = ox + sel.x * nScale + 'px';
+navSel.style.top  = oy + sel.y * nScale + 'px';
+navSel.style.width  = sel.w * nScale + 'px';
+navSel.style.height = sel.h * nScale + 'px';
+
+/* =========================
+   NAV VIEW（カメラ枠）
+========================= */
+navView.style.left =
+ox + (-view.x / view.scale) * nScale + 'px';
+
+navView.style.top =
+oy + (-view.y / view.scale) * nScale + 'px';
+
+navView.style.width =
+(mCont.clientWidth / view.scale) * nScale + 'px';
+
+navView.style.height =
+(mCont.clientHeight / view.scale) * nScale + 'px';
+}
+
+</script>
+
+</body>
+</html>
