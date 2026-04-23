@@ -176,7 +176,7 @@ mCont.addEventListener('touchmove',e=>{
   let scale=touch.lastScale*(dist/touch.lastDist);
 
   const r=mCont.getBoundingClientRect();
-  const minScale=Math.min(r.width/img.w,r.height/img.h);
+  const minScale=Math.max(r.width/img.w,r.height/img.h);
   scale=Math.max(minScale,scale);
 
   const cx=r.width/2, cy=r.height/2;
