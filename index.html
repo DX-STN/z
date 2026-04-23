@@ -97,9 +97,9 @@ fileInput.onchange=e=>{
 
    // ★ 正しい初期表示
    if (img.w < img.h) {
-     view.scale = rect.width / img.h;
+     view.scale = rect.width / img.w;
    } else {
-     view.scale = rect.height / img.w;
+     view.scale = rect.height / img.h;
    }
 
    view.x = (rect.width - img.w * view.scale) / 2;
