@@ -96,14 +96,14 @@ fileInput.onchange=e=>{
    const rect=mCont.getBoundingClientRect();
 
    // ★ 正しい初期表示
-   if (img.w > img.h) {
+   if (img.w < img.h) {
      view.scale = rect.width / img.w;
    } else {
      view.scale = rect.height / img.h;
    }
 
-   view.x = (rect.width - img.w * view.scale) / 2;
-   view.y = (rect.height - img.h * view.scale) / 2;
+   view.y = (rect.width - img.w * view.scale) / 2;
+   view.x = (rect.height - img.h * view.scale) / 2;
 
    sel={x:0,y:0,w:img.w,h:img.h};
 
