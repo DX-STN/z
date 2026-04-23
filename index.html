@@ -96,7 +96,7 @@ fileInput.onchange=e=>{
    const rect=mCont.getBoundingClientRect();
 
    // ★ 正しい初期表示
-   if (img.w < img.h) {
+   if (img.w > img.h) {
      view.scale = rect.width / img.w;
    } else {
      view.scale = rect.height / img.h;
